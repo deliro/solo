@@ -1,0 +1,21 @@
+repos:
+  - repo: https://github.com/sbdchd/squawk
+    rev: v2.70.0
+    hooks:
+      - id: squawk
+        additional_dependencies: [squawk-cli@2.70.0]
+        files: ^migrations/.*\.sql$
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --all -- --check
+        language: system
+        pass_filenames: false
+        files: \.rs$
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy --locked --all-targets --all-features -- -D warnings
+        language: system
+        pass_filenames: false
+        files: (^|/)(Cargo\.(toml|lock)|clippy\.toml|rust-toolchain\.toml)$|\.rs$

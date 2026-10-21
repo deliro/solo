@@ -1,0 +1,8 @@
+# Automated migrations are transactional; timeout is enforced by Store::migrate.
+# Strict DDL surfaces schema divergence instead of hiding it with IF NOT EXISTS.
+excluded_rules = [
+    "require-concurrent-index-creation",
+    "require-concurrent-index-deletion",
+    "require-timeout-settings",
+    "prefer-robust-stmts",
+]

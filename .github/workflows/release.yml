@@ -1,0 +1,120 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  verify:
+    uses: ./.github/workflows/ci.yml
+  build:
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+          - os: macos-15
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      TARGET: ${{ matrix.target }}
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Check version tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          version=$(cargo metadata --locked --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "solo") | .version')
+          test "$RELEASE_TAG" = "v$version"
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes musl-tools
+          echo 'CC=musl-gcc' >> "$GITHUB_ENV"
+      - name: Build and test release target
+        run: |
+          cargo test --locked --release --target "$TARGET" --bin solo
+          cargo build --locked --release --target "$TARGET" --bin solo
+          "target/$TARGET/release/solo" --version
+          "target/$TARGET/release/solo" run --help
+          "target/$TARGET/release/solo" status --help
+      - name: Check static Linux binary
+        if: runner.os == 'Linux'
+        run: |
+          readelf --program-headers "target/$TARGET/release/solo" > "$RUNNER_TEMP/program-headers"
+          readelf --sections --wide "target/$TARGET/release/solo" > "$RUNNER_TEMP/sections"
+          grep -q '\.eh_frame ' "$RUNNER_TEMP/sections"
+          if grep -q '\.debug_' "$RUNNER_TEMP/sections"; then
+            echo 'Release binary must not contain debug information' >&2
+            exit 1
+          fi
+          if grep -q INTERP "$RUNNER_TEMP/program-headers"; then
+            echo 'Linux release binary must be static' >&2
+            exit 1
+          fi
+      - name: Package
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          archive="solo-$RELEASE_TAG-$TARGET"
+          mkdir -p "dist/$archive/docs"
+          cp "target/$TARGET/release/solo" README.md README_ru.md CONTRIBUTING.md LICENSE "dist/$archive/"
+          cp docs/usage.md "dist/$archive/docs/"
+          tar -czf "dist/$archive.tar.gz" -C dist "$archive"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: solo-${{ matrix.target }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: solo-*
+          path: dist
+          merge-multiple: true
+      - name: Publish release
+        working-directory: dist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          test "$(find . -maxdepth 1 -name '*.tar.gz' | wc -l)" -eq 4
+          sha256sum ./*.tar.gz > SHA256SUMS
+          if gh release view "$RELEASE_TAG" --json isDraft > release.json; then
+            test "$(jq -r .isDraft release.json)" = true
+            gh release upload "$RELEASE_TAG" ./*.tar.gz SHA256SUMS --clobber
+          else
+            gh release create "$RELEASE_TAG" ./*.tar.gz SHA256SUMS --verify-tag --draft --title "$RELEASE_TAG" --generate-notes
+          fi
+          case "${RELEASE_TAG%%+*}" in
+            *-*) prerelease=true ;;
+            *) prerelease=false ;;
+          esac
+          gh release edit "$RELEASE_TAG" --draft=false --prerelease="$prerelease"

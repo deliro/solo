@@ -1,0 +1,7 @@
+/target/
+/dist/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.snap.new

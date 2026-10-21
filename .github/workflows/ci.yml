@@ -1,0 +1,49 @@
+name: CI
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_call:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: rustfmt, clippy
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Check Rust
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+      - name: Test pure logic
+        run: cargo test --locked --bin solo
+      - name: Test CLI against PostgreSQL 17 and PgBouncer
+        if: runner.os == 'Linux'
+        run: cargo test --locked --test cli
+      - name: Smoke test CLI
+        run: |
+          cargo run --locked -- --version
+          cargo run --locked -- run --help
+          cargo run --locked -- status --help
+      - name: Install pinned SQL linter
+        if: runner.os == 'Linux'
+        run: |
+          curl --fail --silent --show-error --location https://github.com/sbdchd/squawk/releases/download/v2.70.0/squawk-linux-x64 --output "$RUNNER_TEMP/squawk"
+          echo "836ba2ab0c0ec30ae02c9f2cec065b341ff853765ceaa3965c22109c2f53eb1c  $RUNNER_TEMP/squawk" | sha256sum --check --status
+          chmod +x "$RUNNER_TEMP/squawk"
+      - name: Check migrations
+        if: runner.os == 'Linux'
+        run: '"$RUNNER_TEMP/squawk" migrations/*.sql'

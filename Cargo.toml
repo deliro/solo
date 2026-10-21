@@ -1,0 +1,87 @@
+[package]
+name = "solo"
+version = "0.1.0"
+edition = "2024"
+description = "Run a trusted foreground command under a PostgreSQL lease"
+readme = "README.md"
+license = "MIT"
+keywords = ["cli", "postgres", "cron", "scheduler", "distributed-lock"]
+categories = ["command-line-utilities", "concurrency"]
+include = ["src/**", "tests/**", "CONTRIBUTING.md", "migrations/**", "Cargo.toml", "Cargo.lock", "README.md", "README_ru.md", "LICENSE", "docs/usage.md", "clippy.toml", "rust-toolchain.toml"]
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+clap = { version = "4", default-features = false, features = ["std", "derive", "env", "help", "usage", "error-context", "suggestions"] }
+humantime = "2"
+libc = "0.2"
+rustls = { version = "0.23", default-features = false, features = ["std", "ring", "tls12"] }
+rustls-native-certs = "0.8"
+tokio-postgres-rustls = { version = "0.14", features = ["ring"] }
+nix = { version = "0.30", features = ["signal", "process", "hostname"] }
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "rt", "process", "signal", "time"] }
+tokio-postgres = { version = "0.7", features = ["with-chrono-0_4", "with-uuid-1"] }
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+nix = { version = "0.30", features = ["fs"] }
+tokio = { version = "1", features = ["rt-multi-thread"] }
+rstest = { version = "0.28", default-features = false }
+libtest-mimic = "0.8"
+anyhow = "1"
+tempfile = "3"
+testcontainers = "0.27"
+
+[lints.rust]
+warnings = "deny"
+unreachable_pub = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+# Binary crates export no API; this nursery lint contradicts unreachable_pub.
+redundant_pub_crate = "allow"
+perf = { level = "deny", priority = -1 }
+style = { level = "deny", priority = -1 }
+panic = "deny"
+arithmetic_side_effects = "deny"
+assertions_on_result_states = "deny"
+exit = "deny"
+mem_forget = "deny"
+string_slice = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
+unimplemented = "deny"
+todo = "deny"
+unreachable = "deny"
+dbg_macro = "deny"
+indexing_slicing = "deny"
+cast_possible_truncation = "deny"
+cast_possible_wrap = "deny"
+cast_precision_loss = "deny"
+cast_sign_loss = "deny"
+fallible_impl_from = "deny"
+match_same_arms = "deny"
+match_wildcard_for_single_variants = "deny"
+if_not_else = "deny"
+needless_continue = "deny"
+explicit_iter_loop = "deny"
+explicit_into_iter_loop = "deny"
+redundant_clone = "deny"
+implicit_clone = "deny"
+clone_on_copy = "deny"
+undocumented_unsafe_blocks = "deny"
+
+[[test]]
+name = "cli"
+path = "tests/cli/main.rs"
+harness = false
+
+[profile.release]
+opt-level = "s"
+codegen-units = 1
+lto = "fat"
+debug = 0
+strip = "symbols"
+panic = "unwind"
