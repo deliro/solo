@@ -5,6 +5,7 @@ edition = "2024"
 description = "Run a trusted foreground command under a PostgreSQL lease"
 readme = "README.md"
 license = "MIT"
+repository = "https://github.com/deliro/solo"
 keywords = ["cli", "postgres", "cron", "scheduler", "distributed-lock"]
 categories = ["command-line-utilities", "concurrency"]
 include = ["src/**", "tests/**", "CONTRIBUTING.md", "migrations/**", "Cargo.toml", "Cargo.lock", "README.md", "README_ru.md", "LICENSE", "docs/usage.md", "clippy.toml", "rust-toolchain.toml"]

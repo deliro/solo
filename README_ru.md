@@ -1,5 +1,9 @@
 # Solo
 
+[![CI](https://github.com/deliro/solo/actions/workflows/ci.yml/badge.svg)](https://github.com/deliro/solo/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/deliro/solo)](https://github.com/deliro/solo/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 [English](README.md) | [Русский](README_ru.md)
 
 Solo запускает команду под общей блокировкой в PostgreSQL: одна задача может иметь исполнителей на разных хостах и в разных ЦОД.
@@ -7,7 +11,7 @@ Solo запускает команду под общей блокировкой 
 
 ## Установка
 
-Скачайте архив `solo-v<версия>-<target>.tar.gz` и `SHA256SUMS` из GitHub Releases этого репозитория.
+Скачайте архив `solo-v<версия>-<target>.tar.gz` и `SHA256SUMS` из [GitHub Releases](https://github.com/deliro/solo/releases).
 
 | ОС | x86_64 | ARM64 |
 |---|---|---|

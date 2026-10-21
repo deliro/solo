@@ -1,5 +1,9 @@
 # Solo
 
+[![CI](https://github.com/deliro/solo/actions/workflows/ci.yml/badge.svg)](https://github.com/deliro/solo/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/deliro/solo)](https://github.com/deliro/solo/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 [English](README.md) | [Russian](README_ru.md)
 
 Solo runs a command under a shared PostgreSQL lease so that instances of the same job can run on different hosts or in different data centers.
@@ -7,7 +11,7 @@ It records successful cron intervals in the database so that repeated invocation
 
 ## Installation
 
-Download `solo-v<version>-<target>.tar.gz` and `SHA256SUMS` from this repository's GitHub Releases.
+Download `solo-v<version>-<target>.tar.gz` and `SHA256SUMS` from [GitHub Releases](https://github.com/deliro/solo/releases).
 
 | OS | x86_64 | ARM64 |
 |---|---|---|
