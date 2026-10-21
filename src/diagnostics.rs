@@ -53,11 +53,7 @@ impl Diagnostics {
     pub(super) fn emit(&self, mut line: String) {
         // Current callers use only fixed safe error categories and timestamps.
         // Keep queued storage bounded even if a future caller grows a message.
-        let mut end = line.len().min(2048);
-        while !line.is_char_boundary(end) {
-            end = end.saturating_sub(1);
-        }
-        line.truncate(end);
+        line.truncate(line.floor_char_boundary(2048));
         line.push('\n');
         line.shrink_to(2049);
         if let Some(sender) = &self.sender {

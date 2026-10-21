@@ -189,45 +189,44 @@ impl StoreError {
 }
 
 fn classify_source(error: &(dyn Error + 'static)) -> DatabaseCause {
-    let mut source = error.source();
-    while let Some(error) = source {
-        if error.is::<rustls::Error>() {
-            return DatabaseCause::Tls;
-        }
-        if let Some(error) = error.downcast_ref::<io::Error>() {
-            if let Some(cause) = error.get_ref()
-                && cause.is::<rustls::Error>()
-            {
-                return DatabaseCause::Tls;
-            }
-            // std's resolver wraps platform-specific getaddrinfo errors in an
-            // io::Error. Inspect its fixed prefix only; never emit OS text.
-            if error
-                .to_string()
-                .starts_with("failed to lookup address information:")
-            {
-                return DatabaseCause::Dns;
-            }
-            return match error.kind() {
-                io::ErrorKind::ConnectionRefused => DatabaseCause::Refused,
-                io::ErrorKind::TimedOut => DatabaseCause::Timeout,
-                io::ErrorKind::NotFound => DatabaseCause::EndpointNotFound,
-                io::ErrorKind::ConnectionReset
-                | io::ErrorKind::ConnectionAborted
-                | io::ErrorKind::BrokenPipe
-                | io::ErrorKind::UnexpectedEof
-                | io::ErrorKind::NotConnected => DatabaseCause::Connection,
-                _ => DatabaseCause::Other,
-            };
-        }
+    std::iter::successors(error.source(), |error| (*error).source())
+        .find_map(classify_cause)
+        .unwrap_or(DatabaseCause::Other)
+}
+
+fn classify_cause(error: &(dyn Error + 'static)) -> Option<DatabaseCause> {
+    if error.is::<rustls::Error>() {
+        return Some(DatabaseCause::Tls);
+    }
+    let Some(error) = error.downcast_ref::<io::Error>() else {
         // tokio-postgres 0.7.18 uses this fixed local error for an SSLRequest
         // rejection. Equality is classification only; never print source text.
-        if error.to_string() == "server does not support TLS" {
-            return DatabaseCause::Tls;
-        }
-        source = error.source();
+        return (error.to_string() == "server does not support TLS").then_some(DatabaseCause::Tls);
+    };
+    if let Some(cause) = error.get_ref()
+        && cause.is::<rustls::Error>()
+    {
+        return Some(DatabaseCause::Tls);
     }
-    DatabaseCause::Other
+    // std's resolver wraps platform-specific getaddrinfo errors in an
+    // io::Error. Inspect its fixed prefix only; never emit OS text.
+    if error
+        .to_string()
+        .starts_with("failed to lookup address information:")
+    {
+        return Some(DatabaseCause::Dns);
+    }
+    Some(match error.kind() {
+        io::ErrorKind::ConnectionRefused => DatabaseCause::Refused,
+        io::ErrorKind::TimedOut => DatabaseCause::Timeout,
+        io::ErrorKind::NotFound => DatabaseCause::EndpointNotFound,
+        io::ErrorKind::ConnectionReset
+        | io::ErrorKind::ConnectionAborted
+        | io::ErrorKind::BrokenPipe
+        | io::ErrorKind::UnexpectedEof
+        | io::ErrorKind::NotConnected => DatabaseCause::Connection,
+        _ => DatabaseCause::Other,
+    })
 }
 
 async fn tls_connector(mode: SslMode) -> Result<MakeRustlsConnect, StoreError> {
