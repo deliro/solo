@@ -54,6 +54,9 @@ Clippy enables `all`, `pedantic`, and `nursery`, plus explicit bans on potential
 | Database creation and process cleanup | `tests/cli/common/mod.rs` |
 
 - Two integration scenarios run concurrently by default; `--test-threads=N` overrides this limit.
+- Concurrent-start exclusion scenarios use a 1s database timeout, 2s migration timeout, and 5s lease so simultaneous process startup and authentication do not depend on the shared harness's 200ms database budget. Tests of timeout behavior retain their explicit tight deadlines.
+- The shared command builder supplies timing defaults through environment variables so a scenario can override them with CLI flags. The precedence scenario supplies an explicit CLI TTL when testing an invalid environment TTL.
+- Keep cooperative-shutdown coverage: macOS can return `EPERM` when signalling a group whose leader is an unreaped zombie. The supervisor reaps an exited child before the final group signal, while still killing remaining group members.
 - Each integration-suite run creates **one** `postgres:17` container.
 - The transaction-pooling test also starts `edoburu/pgbouncer:v1.25.1-p0` with `max_prepared_statements=0`; it uses the same PostgreSQL instance and is removed after the test.
 - Each test creates a **unique database** in that container.

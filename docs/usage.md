@@ -1,6 +1,6 @@
 # Solo
 
-Solo runs one trusted foreground command on Linux, coordinated by a common writable PostgreSQL primary. The external scheduler owns retries and must use UTC.
+Solo runs one trusted foreground command on Linux or macOS, coordinated by a common writable PostgreSQL primary. The external scheduler owns retries and must use UTC. For binary downloads and checksum-verified installation, see the [README](../README.md#installation).
 
 ## Run
 

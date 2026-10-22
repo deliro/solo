@@ -300,6 +300,9 @@ async fn stop_group(child: &mut Child, pid: i32, grace: Duration) -> Result<(), 
     match killpg(Pid::from_raw(pid), Signal::SIGTERM) {
         Ok(()) => {
             sleep(grace).await;
+            // Reap an exited child before signalling again: macOS can return
+            // EPERM for a process group containing only its zombie leader.
+            child.try_wait().map_err(|_| "reap")?;
             match killpg(Pid::from_raw(pid), Signal::SIGKILL) {
                 Ok(()) | Err(Errno::ESRCH) => {}
                 Err(_) => return Err("kill_group"),

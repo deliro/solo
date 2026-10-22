@@ -59,30 +59,14 @@ impl Database {
             .env_remove("SOLO_KEY")
             .env_remove("SOLO_SCHEDULE")
             .env_remove("SOLO_MAX_RUNTIME")
-            .env_remove("SOLO_TTL")
-            .env_remove("SOLO_HEARTBEAT")
+            .env("SOLO_TTL", "2s")
+            .env("SOLO_HEARTBEAT", "200ms")
             .env_remove("SOLO_HEARTBEAT_RETRY_INTERVAL")
-            .env_remove("SOLO_DB_TIMEOUT")
-            .env_remove("SOLO_GRACE")
-            .env_remove("SOLO_MIGRATION_TIMEOUT")
+            .env("SOLO_DB_TIMEOUT", "200ms")
+            .env("SOLO_GRACE", "100ms")
+            .env("SOLO_MIGRATION_TIMEOUT", "500ms")
             .env("SOLO_DATABASE_URL", &self.dsn)
-            .args([
-                "run",
-                "--key",
-                key,
-                "--schedule",
-                schedule,
-                "--ttl",
-                "2s",
-                "--heartbeat",
-                "200ms",
-                "--db-timeout",
-                "200ms",
-                "--grace",
-                "100ms",
-                "--migration-timeout",
-                "500ms",
-            ]);
+            .args(["run", "--key", key, "--schedule", schedule]);
         command
     }
     pub(super) fn spawn(&self, key: &str, script: &str) -> Result<Process> {

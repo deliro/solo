@@ -20,6 +20,31 @@ Download `solo-v<version>-<target>.tar.gz` and `SHA256SUMS` from [GitHub Release
 
 Verify the archive's SHA-256 against `SHA256SUMS` (`sha256sum` on Linux, `shasum -a 256` on macOS), extract it, and install `solo` in a directory on `PATH`. Linux binaries are static; TLS requires system root certificates. Windows is not supported: handler supervision uses Unix signals and process groups.
 
+For example, install v0.1.0 for Linux x86_64 below. Set `target` to the value from the table for your machine; macOS uses the same commands. Run in an empty directory:
+
+```sh
+(
+  set -eu
+  version=0.1.0
+  target=x86_64-unknown-linux-musl
+  archive="solo-v$version-$target"
+  release="https://github.com/deliro/solo/releases/download/v$version"
+  curl --fail --location "$release/$archive.tar.gz" --output "$archive.tar.gz"
+  curl --fail --location "$release/SHA256SUMS" --output SHA256SUMS
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum --ignore-missing --check SHA256SUMS
+  else
+    shasum -a 256 --ignore-missing --check SHA256SUMS
+  fi
+  tar -xzf "$archive.tar.gz"
+  mkdir -p "$HOME/.local/bin"
+  install -m 755 "$archive/solo" "$HOME/.local/bin/solo"
+  "$HOME/.local/bin/solo" --version
+)
+```
+
+Add `$HOME/.local/bin` to your shell's `PATH` if needed: `export PATH="$HOME/.local/bin:$PATH"`. Persist this line in your shell's startup file. Solo still needs the PostgreSQL connection and scheduler described below.
+
 Build from source:
 
 ```sh
@@ -65,7 +90,7 @@ Arguments after `--` are passed directly; explicitly use `/bin/sh -c` for a trus
 The current interval begins at the latest scheduled instant not after PostgreSQL time.
 For example, with `*/5 * * * *`, success at 00:00 suppresses a retry at 00:03; a new interval starts at 00:05.
 
-- Five-field Kubernetes-style cron in UTC is supported; detailed syntax is in the [operations guide (Russian)](docs/usage.md#schedule-and-outcomes).
+- Five-field Kubernetes-style cron in UTC is supported; detailed syntax is in the [operations guide](docs/usage.md#schedule-and-outcomes).
 - A late invocation executes the current interval; missed intervals are not backfilled.
 - An active lease covers the entire key, including the next interval.
 - All instances of a key must use the same schedule; stop old instances before changing it.
@@ -160,6 +185,6 @@ Retention bounds success-history growth. The current horizon is **2928 days**, s
 
 Solo automatically prepares the database schema during `run` startup. Errors and unknown schema versions prevent the handler from starting.
 Checking an up-to-date schema does not take a global migration lock; first-time initialization is serialized and rechecks the schema under the lock.
-Schema upgrades, key deletion, and storage planning are covered in the [operations guide (Russian)](docs/usage.md#schema-and-operations).
+Schema upgrades, key deletion, and storage planning are covered in the [operations guide](docs/usage.md#schema-and-operations).
 
 CLI reference: `solo --help`, `solo run --help`, `solo status --help`.

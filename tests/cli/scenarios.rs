@@ -27,13 +27,32 @@ fn hold(db: &Database, marker: &str) -> String {
         db.path(marker).display()
     )
 }
+fn spawn_contender(db: &Database, key: &str, script: &str) -> Result<common::Process> {
+    let mut command = db.command(key, "@yearly");
+    // Concurrent process starts compete for CPU and PostgreSQL authentication.
+    // These tests assert exclusion, not subsecond connection or migration deadlines.
+    command.args([
+        "--ttl",
+        "5s",
+        "--db-timeout",
+        "1s",
+        "--migration-timeout",
+        "2s",
+        "--",
+        "/bin/sh",
+        "-c",
+        script,
+    ]);
+    db.start(command)
+}
 async fn contention(h: Arc<Harness>) -> Result<()> {
     let db = h.database().await?;
-    let mut owner = db.spawn("shared", &hold(&db, "owner"))?;
+    let mut owner = spawn_contender(&db, "shared", &hold(&db, "owner"))?;
     owner.track_group(&db.path("owner")).await?;
     let mut contenders = (0..5)
         .map(|n| {
-            db.spawn(
+            spawn_contender(
+                &db,
                 "shared",
                 &format!("touch '{}'", db.path(&format!("unexpected{n}")).display()),
             )
@@ -66,7 +85,7 @@ async fn simultaneous_first_acquisition(h: Arc<Harness>) -> Result<()> {
                 let barrier = &barrier;
                 scope.spawn(move || {
                     barrier.wait();
-                    db.spawn("first-race", &hold(db, &format!("winner{number}")))
+                    spawn_contender(db, "first-race", &hold(db, &format!("winner{number}")))
                 })
             })
             .collect::<Vec<_>>();
@@ -96,7 +115,11 @@ async fn simultaneous_first_acquisition(h: Arc<Harness>) -> Result<()> {
         }
         ensure!(
             Instant::now() < deadline,
-            "first-acquisition contenders did not settle"
+            "first-acquisition contenders did not settle; logs: {:?}",
+            attempts
+                .iter()
+                .map(common::Process::logs)
+                .collect::<Result<Vec<_>>>()?
         );
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
@@ -445,10 +468,12 @@ async fn delayed_current_interval(h: Arc<Harness>) -> Result<()> {
         .await?
         .try_get(0)?;
     let mut command = db.command("delayed", "* * * * *");
-    command.args(["--", "/bin/true"]);
+    command.args(["--", "/usr/bin/true"]);
+    let mut process = db.start(command)?;
     ensure!(
-        db.start(command)?.wait().await?.success(),
-        "delayed run failed"
+        process.wait().await?.success(),
+        "delayed run failed: {}",
+        process.logs()?
     );
     let row=db.client.query_one("SELECT last_success,date_trunc('minute',clock_timestamp()) FROM public.solo_leases WHERE key='delayed'",&[]).await?;
     let success: DateTime<Utc> = row.try_get(0)?;
@@ -636,11 +661,13 @@ async fn non_shell_handler_and_no_scrape(h: Arc<Harness>) -> Result<()> {
     let mut command = db.command("native", "@yearly");
     command
         .env("PATH", "/nonexistent")
-        .args(["--", "/bin/true"]);
+        .args(["--", "/usr/bin/true"]);
     let start = Instant::now();
+    let mut process = db.start(command)?;
     ensure!(
-        db.start(command)?.wait().await?.success(),
-        "native child needs Python or PATH"
+        process.wait().await?.success(),
+        "native child needs Python or PATH: {}",
+        process.logs()?
     );
     ensure!(
         start.elapsed() < Duration::from_secs(2),
@@ -683,7 +710,7 @@ async fn environment_configuration(h: Arc<Harness>) -> Result<()> {
         .env("SOLO_KEY", "environment")
         .env("SOLO_SCHEDULE", "invalid")
         .env("SOLO_TTL", "1ms")
-        .args(["--", "/usr/bin/touch"])
+        .args(["--ttl", "2s", "--", "/usr/bin/touch"])
         .arg(db.path("precedence"));
     ensure!(
         db.start(command)?.wait().await?.success(),

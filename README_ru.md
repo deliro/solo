@@ -20,6 +20,31 @@ Solo запускает команду под общей блокировкой 
 
 Проверьте SHA-256 архива по `SHA256SUMS` (`sha256sum` на Linux, `shasum -a 256` на macOS), распакуйте его и установите `solo` в каталог из `PATH`. Linux-бинарники статические; для TLS нужны системные корневые сертификаты. Windows пока не поддерживается: управление обработчиком использует Unix-сигналы и группы процессов.
 
+Пример установки v0.1.0 для Linux x86_64. Замените `target` значением из таблицы для своей машины; на macOS команды те же. Выполняйте в пустом каталоге:
+
+```sh
+(
+  set -eu
+  version=0.1.0
+  target=x86_64-unknown-linux-musl
+  archive="solo-v$version-$target"
+  release="https://github.com/deliro/solo/releases/download/v$version"
+  curl --fail --location "$release/$archive.tar.gz" --output "$archive.tar.gz"
+  curl --fail --location "$release/SHA256SUMS" --output SHA256SUMS
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum --ignore-missing --check SHA256SUMS
+  else
+    shasum -a 256 --ignore-missing --check SHA256SUMS
+  fi
+  tar -xzf "$archive.tar.gz"
+  mkdir -p "$HOME/.local/bin"
+  install -m 755 "$archive/solo" "$HOME/.local/bin/solo"
+  "$HOME/.local/bin/solo" --version
+)
+```
+
+При необходимости добавьте `$HOME/.local/bin` в `PATH`: `export PATH="$HOME/.local/bin:$PATH"`. Сохраните эту строку в файле запуска оболочки. Для работы ещё нужны PostgreSQL и планировщик, описанные ниже.
+
 Сборка из исходников:
 
 ```sh
