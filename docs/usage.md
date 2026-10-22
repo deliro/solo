@@ -69,6 +69,8 @@ Renewal retries reconnect without reacquiring ownership or migrating. Retryable 
 
 Environment equivalents are `SOLO_KEY`, `SOLO_SCHEDULE`, `SOLO_MAX_RUNTIME`, `SOLO_TTL`, `SOLO_HEARTBEAT`, `SOLO_HEARTBEAT_RETRY_INTERVAL`, `SOLO_DB_TIMEOUT`, `SOLO_GRACE` and `SOLO_MIGRATION_TIMEOUT`. Explicit CLI flags take precedence. The command still follows `--`; the DSN is accepted only through `SOLO_DATABASE_URL`.
 
+Handler completion remains monitored during renewal and retry backoff. A handler that finishes before `--max-runtime` can proceed to final completion without waiting for an in-flight renewal. If its connection needs replacing, one reconnection and final completion share a single `db-timeout`; the same owner and scheduled interval remain in use. The completion transaction is attempted once, and success still requires a confirmed commit.
+
 Handlers must remain foreground, wait for descendants, and keep them in the managed process group. Linux parent-death signaling kills the direct child if Solo is killed; it does **not** guarantee cleanup of all grandchildren. Use an orchestrator/container process boundary for whole-workload cleanup after supervisor death. A paused executor, uninterruptible kernel work, already-sent external requests and primary failover data loss remain limitations of leases.
 
 ## Schema and operations

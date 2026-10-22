@@ -134,12 +134,12 @@ pub(super) struct TaskSnapshot {
 
 pub(super) struct Store {
     client: Client,
-    driver: JoinHandle<()>,
+    driver: Option<JoinHandle<()>>,
     db_timeout: Duration,
 }
 impl Drop for Store {
     fn drop(&mut self) {
-        self.driver.abort();
+        self.disconnect();
     }
 }
 
@@ -285,8 +285,17 @@ async fn server_deadline(tx: &Transaction<'_>, duration: Duration) -> Result<(),
 // Typed calls send unnamed Parse/Bind/Execute together. No prepare round trip
 // or named statement survives a PgBouncer transaction-pool backend handover.
 impl Store {
-    pub(super) fn disconnect(&self) {
-        self.driver.abort();
+    pub(super) fn disconnect(&mut self) {
+        if let Some(driver) = self.driver.take() {
+            driver.abort();
+        }
+    }
+
+    pub(super) fn is_connected(&self) -> bool {
+        self.driver
+            .as_ref()
+            .is_some_and(|driver| !driver.is_finished())
+            && !self.client.is_closed()
     }
 
     pub(super) async fn connect(
@@ -314,7 +323,7 @@ impl Store {
         });
         Ok(Self {
             client,
-            driver,
+            driver: Some(driver),
             db_timeout,
         })
     }
@@ -358,7 +367,7 @@ impl Store {
             Ok(status)
         }).await;
         if result.is_err() {
-            self.driver.abort();
+            self.disconnect();
         }
         result
     }
@@ -391,7 +400,7 @@ impl Store {
         })
         .await;
         if result.is_err() {
-            self.driver.abort();
+            self.disconnect();
         }
         result
     }
@@ -439,7 +448,7 @@ impl Store {
             Ok(Acquire::Acquired(Lease { key: key.to_owned(), owner, scheduled, valid_until }))
         }).await;
         if result.is_err() {
-            self.driver.abort();
+            self.disconnect();
         }
         result
     }
@@ -460,7 +469,7 @@ impl Store {
             Ok(())
         }).await;
         if result.is_err() {
-            self.driver.abort();
+            self.disconnect();
         }
         result
     }
@@ -487,7 +496,7 @@ impl Store {
             Ok(())
         }).await;
         if result.is_err() {
-            self.driver.abort();
+            self.disconnect();
         }
         result
     }

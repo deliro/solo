@@ -20,12 +20,12 @@ Download `solo-v<version>-<target>.tar.gz` and `SHA256SUMS` from [GitHub Release
 
 Verify the archive's SHA-256 against `SHA256SUMS` (`sha256sum` on Linux, `shasum -a 256` on macOS), extract it, and install `solo` in a directory on `PATH`. Linux binaries are static; TLS requires system root certificates. Windows is not supported: handler supervision uses Unix signals and process groups.
 
-For example, install v0.1.0 for Linux x86_64 below. Set `target` to the value from the table for your machine; macOS uses the same commands. Run in an empty directory:
+For example, install v0.1.1 for Linux x86_64 below. Set `target` to the value from the table for your machine; macOS uses the same commands. Run in an empty directory:
 
 ```sh
 (
   set -eu
-  version=0.1.0
+  version=0.1.1
   target=x86_64-unknown-linux-musl
   archive="solo-v$version-$target"
   release="https://github.com/deliro/solo/releases/download/v$version"
@@ -140,6 +140,8 @@ TTL limits the lease, not the handler's lifetime: successful renewals allow it t
 
 Transient renewal failures retry on fresh connections: connection/DNS errors, timeouts, PostgreSQL shutdown/startup, read-only primary, connection limits, lock conflicts and deadlocks. The pause doubles from `--heartbeat-retry-interval` to `max(2s, heartbeat-retry-interval)` and resets after recovery. Each attempt, including reconnection, shares one `db-timeout`, clipped to the last confirmed lease deadline minus `grace`. Attempts stop when another backoff no longer fits; failures never extend that deadline. Signals and `--max-runtime` remain active. Diagnostics report `phase=heartbeat result=retry` and `result=recovered`.
 Ownership loss, authentication, permission, TLS, schema and unclassified errors stop immediately. Acquisition and final completion are not retried; a handler finishing during an outage still needs a confirmed completion commit.
+
+Handler completion is monitored during renewal as well as retry backoff. If the database connection needs replacing before recording the outcome, Solo reconnects once; connection and final completion share one `db-timeout`. This does not reacquire the lease or retry the completion transaction.
 
 ## Outcomes and failures
 

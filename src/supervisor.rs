@@ -1,4 +1,8 @@
-use std::{io, process::Stdio, time::Duration};
+use std::{
+    io,
+    process::{ExitStatus, Stdio},
+    time::Duration,
+};
 
 use nix::{
     errno::Errno,
@@ -63,12 +67,7 @@ pub(super) async fn run(config: Config, diagnostics: &Diagnostics) -> Result<(),
             _ = terminate.recv() => break (Completion::Failure, Some("sigterm")),
             _ = interrupt.recv() => break (Completion::Failure, Some("sigint")),
             () = sleep_until(stop_at) => break (Completion::Failure, Some(if maximum.is_some_and(|deadline| Instant::now() >= deadline) { "max_runtime" } else { "lease_deadline" })),
-            status = child.wait() => {
-                break match status {
-                    Ok(status) if status.success() => (Completion::Success, None),
-                    _ => (Completion::Failure, Some("handler_failure")),
-                };
-            }
+            status = child.wait() => break handler_completion(status),
             () = sleep_until(next_heartbeat) => {
                 let heartbeat_started = Instant::now();
                 // Do not let a slow DB operation consume the shutdown reserve.
@@ -79,28 +78,36 @@ pub(super) async fn run(config: Config, diagnostics: &Diagnostics) -> Result<(),
                 ) else {
                     break (Completion::Failure, Some("heartbeat_deadline"));
                 };
-                let deadline = reserve.min(budget);
-                tokio::select! {
+                let heartbeat = tokio::select! {
                     biased;
-                    _ = terminate.recv() => break (Completion::Failure, Some("sigterm")),
-                    _ = interrupt.recv() => break (Completion::Failure, Some("sigint")),
-                    () = sleep_until(stop_at) => break (Completion::Failure, Some("runtime_or_lease_deadline")),
-                    heartbeat = renewal.attempt(&mut store, &config, &lease, deadline) => {
-                        match heartbeat {
-                            Ok(()) => {
-                                if renewal.delay.take().is_some() {
-                                    diagnostics.emit("solo phase=heartbeat result=recovered".to_owned());
-                                }
-                                valid_until = renewed;
-                                next_heartbeat = next;
-                            }
-                            Err(error) => {
-                                let Ok(next) = renewal.retry(&error, &config, reserve, diagnostics) else {
-                                    break (Completion::Failure, Some("heartbeat"));
-                                };
-                                next_heartbeat = next;
-                            }
+                    _ = terminate.recv() => Err((Completion::Failure, Some("sigterm"))),
+                    _ = interrupt.recv() => Err((Completion::Failure, Some("sigint"))),
+                    () = sleep_until(stop_at) => Err((Completion::Failure, Some("runtime_or_lease_deadline"))),
+                    status = child.wait() => Err(handler_completion(status)),
+                    heartbeat = renewal.attempt(&mut store, &config, &lease, reserve.min(budget)) => Ok(heartbeat),
+                };
+                let heartbeat = match heartbeat {
+                    Ok(heartbeat) => heartbeat,
+                    Err(completion) => {
+                        // Cancellation can leave an unconfirmed transaction. Final
+                        // completion must reconnect and recheck ownership.
+                        store.disconnect();
+                        break completion;
+                    }
+                };
+                match heartbeat {
+                    Ok(()) => {
+                        if renewal.delay.take().is_some() {
+                            diagnostics.emit("solo phase=heartbeat result=recovered".to_owned());
                         }
+                        valid_until = renewed;
+                        next_heartbeat = next;
+                    }
+                    Err(error) => {
+                        let Ok(next) = renewal.retry(&error, &config, reserve, diagnostics) else {
+                            break (Completion::Failure, Some("heartbeat"));
+                        };
+                        next_heartbeat = next;
                     }
                 }
             }
@@ -108,7 +115,7 @@ pub(super) async fn run(config: Config, diagnostics: &Diagnostics) -> Result<(),
     };
     // Never free ownership while a handler or remaining group member may run.
     stop_group(&mut child, pid, config.grace).await?;
-    if let Err(error) = store.finish(&lease, completion).await {
+    if let Err(error) = finish(&mut store, &config, &lease, completion).await {
         // Keep the initiating failure visible; a successful child still needs
         // a confirmed commit before the attempt can succeed.
         diagnostics.emit(format!(
@@ -121,6 +128,14 @@ pub(super) async fn run(config: Config, diagnostics: &Diagnostics) -> Result<(),
     }
     diagnostics.emit("solo phase=finish result=success".to_owned());
     Ok(())
+}
+
+fn handler_completion(status: io::Result<ExitStatus>) -> (Completion, Option<&'static str>) {
+    if status.is_ok_and(|status| status.success()) {
+        (Completion::Success, None)
+    } else {
+        (Completion::Failure, Some("handler_failure"))
+    }
 }
 
 struct Renewal {
@@ -178,6 +193,29 @@ impl Renewal {
     }
 }
 
+async fn finish(
+    store: &mut Store,
+    config: &Config,
+    lease: &Lease,
+    completion: Completion,
+) -> Result<(), StoreError> {
+    let result = tokio::time::timeout(config.db_timeout, async {
+        if !store.is_connected() {
+            // Reuse the existing owner and interval after a failed or cancelled
+            // heartbeat. Connection and completion share one operation budget.
+            *store = Store::connect(&config.database_url, config.db_timeout).await?;
+        }
+        // Completion is attempted only once: a failed COMMIT may have succeeded.
+        store.finish(lease, completion).await
+    })
+    .await
+    .unwrap_or(Err(StoreError::Timeout(config.db_timeout)));
+    if result.is_err() {
+        store.disconnect();
+    }
+    result
+}
+
 fn acquired_lease(acquired: Acquire, diagnostics: &Diagnostics) -> Option<crate::store::Lease> {
     match acquired {
         Acquire::Acquired(lease) => Some(lease),
@@ -221,7 +259,7 @@ async fn start(
     if let Ok(child) = spawn(config) {
         Ok(child)
     } else {
-        if let Err(error) = store.finish(lease, Completion::Failure).await {
+        if let Err(error) = finish(store, config, lease, Completion::Failure).await {
             diagnostics.emit(format!(
                 "solo phase=cleanup reason=finish detail=\"{error}\""
             ));
@@ -297,13 +335,32 @@ fn spawn(config: &Config) -> io::Result<Child> {
 }
 
 async fn stop_group(child: &mut Child, pid: i32, grace: Duration) -> Result<(), &'static str> {
-    match killpg(Pid::from_raw(pid), Signal::SIGTERM) {
+    // A shutdown signal can win the select after the child has exited. Reap
+    // before signalling: macOS rejects a group containing only a zombie leader.
+    child.try_wait().map_err(|_| "reap")?;
+    let termination = match killpg(Pid::from_raw(pid), Signal::SIGTERM) {
+        Err(Errno::EPERM) if child.try_wait().map_err(|_| "reap")?.is_some() => {
+            // The child may exit between try_wait and killpg. Retry after
+            // reaping it, still signalling any surviving group members.
+            killpg(Pid::from_raw(pid), Signal::SIGTERM)
+        }
+        result => result,
+    };
+    match termination {
         Ok(()) => {
             sleep(grace).await;
             // Reap an exited child before signalling again: macOS can return
             // EPERM for a process group containing only its zombie leader.
             child.try_wait().map_err(|_| "reap")?;
-            match killpg(Pid::from_raw(pid), Signal::SIGKILL) {
+            let killing = match killpg(Pid::from_raw(pid), Signal::SIGKILL) {
+                Err(Errno::EPERM) if child.try_wait().map_err(|_| "reap")?.is_some() => {
+                    // As with SIGTERM, close the exit race with one retry
+                    // after reaping, without overlooking surviving descendants.
+                    killpg(Pid::from_raw(pid), Signal::SIGKILL)
+                }
+                result => result,
+            };
+            match killing {
                 Ok(()) | Err(Errno::ESRCH) => {}
                 Err(_) => return Err("kill_group"),
             }

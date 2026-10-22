@@ -118,7 +118,9 @@ success and release ownership.
 
 Transient heartbeat failures retry on fresh connections while the confirmed
 lease has time remaining, reserving --grace for shutdown. Ownership loss and
-permanent errors stop immediately. On exhausted renewal budget, SIGTERM,
+permanent errors stop immediately. Handler completion remains monitored during
+renewal. A needed reconnection and final completion share one DB timeout;
+the completion transaction is not retried. On exhausted renewal budget, SIGTERM,
 SIGINT, or --max-runtime, stop
 the process group with SIGTERM, then SIGKILL after --grace. A handler exit
 code of 0 counts as success only after the database commit is confirmed.
