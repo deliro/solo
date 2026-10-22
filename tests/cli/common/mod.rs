@@ -105,9 +105,29 @@ impl Process {
         Ok(())
     }
     pub(super) async fn track_group(&mut self, path: &Path) -> Result<()> {
-        wait_file(path).await?;
-        self.group = Some(Pid::from_raw(fs::read_to_string(path)?.trim().parse()?));
-        Ok(())
+        let deadline = Instant::now()
+            .checked_add(Duration::from_secs(5))
+            .ok_or_else(|| anyhow::anyhow!("test deadline overflow"))?;
+        loop {
+            match fs::read_to_string(path) {
+                Ok(contents) if !contents.trim().is_empty() => {
+                    self.group = Some(Pid::from_raw(
+                        contents.trim().parse().context("PID marker")?,
+                    ));
+                    return Ok(());
+                }
+                Ok(_) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+            // Shell redirection creates the file before echo writes the PID.
+            ensure!(
+                Instant::now() < deadline,
+                "PID marker missing: {}",
+                path.display()
+            );
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
     }
     pub(super) async fn wait(&mut self) -> Result<ExitStatus> {
         let deadline = Instant::now()

@@ -19,7 +19,27 @@ macro_rules! cases {
     }),+] };
 }
 pub(super) fn trials(harness: &Arc<Harness>) -> Vec<Trial> {
-    cases!(harness; contention, simultaneous_first_acquisition, separate_keys, success_dedup_failure_retry, atomic_success, finish_transaction_failure, replaced_owner, expired_owner, database_unavailable, database_loss, runtime_kills_group, runtime_sends_term, external_sigterm, external_sigint, supervisor_death, heartbeat_frozen_interval, delayed_current_interval, cron_accepted, cron_rejected, migration_race, migration_lock_timeout, migration_version_error, arguments_and_credentials, non_shell_handler_and_no_scrape, environment_configuration)
+    cases!(harness; contention, simultaneous_first_acquisition, delayed_pid_marker, separate_keys, success_dedup_failure_retry, atomic_success, finish_transaction_failure, replaced_owner, expired_owner, database_unavailable, database_loss, runtime_kills_group, runtime_sends_term, external_sigterm, external_sigint, supervisor_death, heartbeat_frozen_interval, delayed_current_interval, cron_accepted, cron_rejected, migration_race, migration_lock_timeout, migration_version_error, arguments_and_credentials, non_shell_handler_and_no_scrape, environment_configuration)
+}
+async fn delayed_pid_marker(h: Arc<Harness>) -> Result<()> {
+    let db = h.database().await?;
+    let marker = db.path("pid");
+    let mut process = db.spawn(
+        "marker",
+        &format!(
+            ": > '{}'; sleep 0.2; echo $$ > '{}'; exec sleep 0.2",
+            marker.display(),
+            marker.display()
+        ),
+    )?;
+    process.track_group(&marker).await?;
+    ensure!(common::pid(&marker)? > 0, "PID marker was not complete");
+    ensure!(
+        process.wait().await?.success(),
+        "marker handler failed: {}",
+        process.logs()?
+    );
+    Ok(())
 }
 fn hold(db: &Database, marker: &str) -> String {
     format!(
