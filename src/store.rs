@@ -22,9 +22,7 @@ pub(super) enum StoreError {
         "code=schema unsupported or missing database schema; initialize an empty database with solo run; update an existing schema to match this binary"
     )]
     Schema,
-    #[error(
-        "code=sslmode invalid database configuration; set sslmode=require or explicit sslmode=disable"
-    )]
+    #[error("code=configuration invalid database timeout; use a positive duration")]
     Configuration,
     #[error(
         "code=invalid_dsn invalid database connection string; check connection string syntax and sslmode values"
@@ -231,7 +229,7 @@ fn classify_cause(error: &(dyn Error + 'static)) -> Option<DatabaseCause> {
 
 async fn tls_connector(mode: SslMode) -> Result<MakeRustlsConnect, StoreError> {
     let mut roots = RootCertStore::empty();
-    if mode == SslMode::Require {
+    if mode != SslMode::Disable {
         let certificates = tokio::task::spawn_blocking(rustls_native_certs::load_native_certs)
             .await
             .map_err(|_| StoreError::Database(DatabaseCause::Tls))?;
@@ -306,11 +304,6 @@ impl Store {
             return Err(StoreError::Configuration);
         }
         let config: Config = database_url.parse().map_err(|_| StoreError::InvalidDsn)?;
-        // Prefer permits plaintext fallback. Require authenticated TLS, or make
-        // the operator opt in explicitly to local/plaintext transport.
-        if !matches!(config.get_ssl_mode(), SslMode::Require | SslMode::Disable) {
-            return Err(StoreError::Configuration);
-        }
         let (client, connection) = bounded(db_timeout, async {
             let tls = tls_connector(config.get_ssl_mode()).await?;
             config.connect(tls).await.map_err(Into::into)

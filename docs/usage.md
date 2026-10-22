@@ -11,7 +11,7 @@ export SOLO_DATABASE_URL='postgresql://solo:password@db.example/solo?sslmode=req
 solo run --key 'billing/prod/daily' --schedule '0 0 * * *' --max-runtime 30m -- /opt/jobs/billing --daily
 ```
 
-Set the connection string through your secret manager/environment. Do not put it on the Solo command line. `sslmode=require` uses native TLS certificate and hostname verification; install the issuing CA in the system trust store. For a trusted local test database, explicitly use `sslmode=disable`. The implicit `prefer` mode is rejected because it permits a plaintext fallback.
+Set the connection string through your secret manager/environment. Do not put it on the Solo command line. `sslmode` is optional and defaults to `prefer`: try TLS, allowing plaintext if the server rejects TLS. TLS verifies the certificate and hostname against system CAs; install the issuing CA in the system trust store. Certificate or hostname errors fail the connection without plaintext fallback. Use `sslmode=require` to forbid plaintext or `sslmode=disable` to skip TLS. Because a server's refusal of TLS is unauthenticated, `prefer` permits an active attacker to force plaintext; use `require` when transport security is mandatory.
 
 PgBouncer transaction pooling is supported with `max_prepared_statements=0`. Coordination uses parameterized unnamed protocol operations and does not require a statement cache or backend affinity across transactions.
 

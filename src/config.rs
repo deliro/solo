@@ -62,9 +62,9 @@ Handlers must be idempotent: leases do not provide exactly-once external
 effects or fencing. Linux and macOS are supported.",
     after_help = "DATABASE:
   Set SOLO_DATABASE_URL to a PostgreSQL URL or key=value connection string.
-  Use sslmode=require for TLS with system CA and hostname verification, or
-  explicitly use sslmode=disable for a trusted local connection. No plaintext
-  fallback is allowed. Credentials are never accepted as CLI arguments.
+  sslmode defaults to prefer: try TLS, allow plaintext if the server rejects TLS.
+  TLS verifies the system CA and hostname; use sslmode=require to forbid plaintext
+  or sslmode=disable to skip TLS. Credentials are never accepted as CLI arguments.
   Private CA overrides: SSL_CERT_FILE and SSL_CERT_DIR.
 
 EXIT STATUS:
@@ -96,7 +96,7 @@ SOLO_DATABASE_URL are required.",
   solo status --key billing/prod/reconcile
 
 DATABASE:
-  SOLO_DATABASE_URL must explicitly set sslmode=require or sslmode=disable.
+  sslmode defaults to prefer: try TLS, allow plaintext if the server rejects TLS.
   sslmode=require verifies the server certificate and hostname using system CAs."
     )]
     Status {
@@ -137,7 +137,7 @@ environment.",
   changing it. Handlers must be idempotent; exactly-once effects are not guaranteed.
 
 DATABASE:
-  Set SOLO_DATABASE_URL with explicit sslmode=require or sslmode=disable.
+  sslmode defaults to prefer: try TLS, allow plaintext if the server rejects TLS.
   sslmode=require verifies the server certificate and hostname using system CAs.
   The role needs schema DDL and table read/write privileges for automatic setup.
 

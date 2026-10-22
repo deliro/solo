@@ -108,7 +108,7 @@ async fn pooling(harness: Arc<Harness>) -> Result<()> {
         let port = pool.get_host_port_ipv4(5432.tcp()).await?;
         let config: tokio_postgres::Config = db.dsn.parse()?;
         db.dsn = format!(
-            "host={host} port={port} user=solo password=s4_test_secret sslmode=disable dbname={}",
+            "host={host} port={port} user=solo password=s4_test_secret dbname={}",
             config
                 .get_dbname()
                 .ok_or_else(|| anyhow::anyhow!("database missing"))?
@@ -161,7 +161,7 @@ async fn pooling(harness: Arc<Harness>) -> Result<()> {
 async fn verify_pooled_completion(db: &Database) -> Result<()> {
     let mut status = std::process::Command::new(env!("CARGO_BIN_EXE_solo"));
     status
-        .env("SOLO_DATABASE_URL", &db.dsn)
+        .env("SOLO_DATABASE_URL", format!("{} sslmode=prefer", db.dsn))
         .args(["status", "--key", "pooling"]);
     let mut status = db.start(status)?;
     ensure!(

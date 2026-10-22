@@ -72,7 +72,7 @@ solo run \
 Replace the database endpoint and credentials using your secret manager, and replace `/bin/echo` with your job's handler.
 Both URLs and `key=value` connection strings are supported; pass credentials only through `SOLO_DATABASE_URL`.
 PgBouncer transaction pooling with `max_prepared_statements=0` is supported: Solo requires neither cached prepared statements nor a connection pinned to one backend.
-`sslmode=require` verifies the certificate and server hostname against system CAs; explicitly use `sslmode=disable` for a trusted local test database. The implicit `prefer` mode is rejected. Install private CAs in the system store or select them with `SSL_CERT_FILE` / `SSL_CERT_DIR`.
+`sslmode` is optional and defaults to `prefer`: try TLS, allowing plaintext if the server rejects TLS. TLS verifies the certificate and server hostname against system CAs; certificate or hostname errors fail the connection without plaintext fallback. Use `sslmode=require` to forbid plaintext or `sslmode=disable` to skip TLS. Install private CAs in the system store or select them with `SSL_CERT_FILE` / `SSL_CERT_DIR`.
 
 Solo performs one attempt. An external scheduler controls invocations and retries.
 Arguments after `--` are passed directly; explicitly use `/bin/sh -c` for a trusted shell script.

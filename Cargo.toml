@@ -1,6 +1,6 @@
 [package]
 name = "solo"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 description = "Run a trusted foreground command under a PostgreSQL lease"
 readme = "README.md"

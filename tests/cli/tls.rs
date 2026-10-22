@@ -39,18 +39,29 @@ async fn trust_and_hostname(harness: Arc<Harness>) -> Result<()> {
         ("solo.test", "unrelated.crt", "require", false),
         ("solo.test", "missing.crt", "require", false),
         ("solo.test", "missing.crt", "disable", true),
+        ("solo.test", "ca.crt", "prefer", true),
+        ("wrong.test", "ca.crt", "prefer", false),
+        ("solo.test", "unrelated.crt", "prefer", false),
+        ("solo.test", "ca.crt", "", true),
+        ("wrong.test", "ca.crt", "", false),
+        ("solo.test", "unrelated.crt", "", false),
     ] {
         let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_solo"));
         command
             .env(
                 "SOLO_DATABASE_URL",
                 format!(
-                    "{} sslmode={mode}",
-                    db.dsn.replacen(
+                    "{} {}",
+                    db.dsn.replace("sslmode=disable", "").replacen(
                         &format!("host={host} "),
                         &format!("host={name} hostaddr={address} "),
                         1
-                    )
+                    ),
+                    if mode.is_empty() {
+                        String::new()
+                    } else {
+                        format!("sslmode={mode}")
+                    }
                 ),
             )
             .env("SSL_CERT_FILE", fixtures.join(ca))

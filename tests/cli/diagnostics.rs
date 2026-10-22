@@ -27,14 +27,17 @@ pub(super) fn trials(harness: &Arc<Harness>) -> Vec<Trial> {
 async fn sslmode(h: Arc<Harness>) -> Result<()> {
     let db = h.database().await?;
     let mut command = db.command("diagnostics", "@yearly");
-    command.env("SOLO_DATABASE_URL", db.dsn.replace("sslmode=disable", ""));
+    command.env(
+        "SOLO_DATABASE_URL",
+        db.dsn.replace("sslmode=disable", "sslmode=invalid"),
+    );
     command.args(["--", "echo", "handler-must-not-run"]);
     let mut cli = db.start(command)?;
-    ensure!(!cli.wait().await?.success(), "invalid TLS policy succeeded");
+    ensure!(!cli.wait().await?.success(), "invalid sslmode succeeded");
     let logs = cli.logs()?;
     ensure!(
-        logs.contains("set sslmode=require or explicit sslmode=disable"),
-        "missing actionable TLS policy explanation: {logs}"
+        logs.contains("code=invalid_dsn") && logs.contains("sslmode values"),
+        "missing actionable sslmode explanation: {logs}"
     );
     ensure!(!logs.contains("handler-must-not-run"), "handler ran");
     Ok(())
