@@ -15,7 +15,7 @@ Set the connection string through your secret manager/environment. Do not put it
 
 PgBouncer transaction pooling is supported with `max_prepared_statements=0`. Coordination uses parameterized unnamed protocol operations and does not require a statement cache or backend affinity across transactions.
 
-Commands and arguments after `--` are passed directly, without shell expansion. To request a shell explicitly, use `-- /bin/sh -c 'your trusted script'`. Solo is not a sandbox. The child does not receive `SOLO_DATABASE_URL` or PostgreSQL `PG*` environment variables. Other inherited environment variables remain the operator's responsibility; do not duplicate the coordination credentials under other names.
+Commands and arguments after `--` are passed directly, without shell expansion. To request a shell explicitly, use `-- /bin/sh -c 'your trusted script'`. Solo is not a sandbox. Only `SOLO_DATABASE_URL` is removed from the child's environment. All other variables, including PostgreSQL `PG*`, are inherited unchanged so the handler can use its own database settings. Solo itself reads the connection string only from `SOLO_DATABASE_URL`, not from `PG*`. Inherited environment variables remain the operator's responsibility; do not duplicate the coordination credentials under other names.
 
 ## Schedule and outcomes
 

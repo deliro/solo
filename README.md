@@ -53,12 +53,12 @@ Verify the archive's SHA-256 against `SHA256SUMS` (`sha256sum` on Linux, `shasum
 <details>
 <summary>Copy-and-paste installer</summary>
 
-For example, install v0.1.2 for Linux x86_64 below. Set `target` to the value from the table for your machine; macOS uses the same commands. Run in an empty directory:
+For example, install v0.1.3 for Linux x86_64 below. Set `target` to the value from the table for your machine; macOS uses the same commands. Run in an empty directory:
 
 ```sh
 (
   set -eu
-  version=0.1.2
+  version=0.1.3
   target=x86_64-unknown-linux-musl
   archive="solo-v$version-$target"
   release="https://github.com/deliro/solo/releases/download/v$version"
@@ -186,7 +186,7 @@ A handler exit code of 0 becomes a success only after COMMIT is confirmed: recor
 - The command must remain in the foreground, wait for its children, and keep them in its process group. Solo stops the group with SIGTERM/SIGKILL.
 - On Linux, SIGKILL of Solo kills only its direct child through a parent-death signal. Use a container or orchestrator to clean up the entire job.
 - Long process pauses, uninterruptible kernel work, and submitted requests can outlive the lease; failover with data loss can erase success history.
-- Solo runs trusted code. Keys do not isolate applications. `SOLO_DATABASE_URL` and `PG*` variables are removed from the child's environment; do not duplicate credentials under other names.
+- Solo runs trusted code. Keys do not isolate applications. Only `SOLO_DATABASE_URL` is removed from the child's environment. All other variables, including `PG*`, are inherited unchanged so handlers can use their own database settings. Do not duplicate coordination credentials under other names.
 
 ## History retention
 

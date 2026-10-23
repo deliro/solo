@@ -307,12 +307,8 @@ fn spawn(config: &Config) -> io::Result<Child> {
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .process_group(0)
-        .kill_on_drop(true);
-    for (name, _) in std::env::vars_os() {
-        if name == "SOLO_DATABASE_URL" || name.as_encoded_bytes().starts_with(b"PG") {
-            command.env_remove(name);
-        }
-    }
+        .kill_on_drop(true)
+        .env_remove("SOLO_DATABASE_URL");
     #[cfg(target_os = "linux")]
     {
         let parent = i32::try_from(std::process::id())

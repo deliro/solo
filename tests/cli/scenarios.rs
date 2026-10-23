@@ -659,20 +659,28 @@ async fn arguments_and_credentials(h: Arc<Harness>) -> Result<()> {
     );
     ensure!(!db.path("injected").exists(), "implicit shell");
     let mut env = db.command("environment", "@yearly");
-    env.env("PGPASSWORD", "inherited_pg_secret")
-        .env("PGUSER", "coordination_user")
-        .env("PGHOST", "coordination_host")
+    env.env("PGPASSWORD", "handler_password")
+        .env("PGUSER", "handler_user")
+        .env("PGHOST", "handler_host")
+        .env("PG_CUSTOM", "application_value")
         .args(["--", "/usr/bin/env"]);
     let mut process = db.start(env)?;
     ensure!(process.wait().await?.success(), "env handler failed");
     let log = process.logs()?;
     ensure!(
-        !log.contains("SOLO_DATABASE_URL")
-            && !log.contains("s4_test_secret")
-            && !log.contains("inherited_pg_secret")
-            && !log.contains("coordination_user")
-            && !log.contains("coordination_host"),
-        "credentials leaked"
+        !log.contains("SOLO_DATABASE_URL") && !log.contains("s4_test_secret"),
+        "coordination credentials leaked"
+    );
+    ensure!(
+        [
+            "PGPASSWORD=handler_password",
+            "PGUSER=handler_user",
+            "PGHOST=handler_host",
+            "PG_CUSTOM=application_value",
+        ]
+        .into_iter()
+        .all(|expected| log.lines().any(|line| line == expected)),
+        "handler PG environment variables were removed or changed"
     );
     Ok(())
 }

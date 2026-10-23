@@ -127,8 +127,8 @@ code of 0 counts as success only after the database commit is confirmed.
 
 The command must remain in the foreground, wait for its children, and keep
 them in its process group. Arguments after -- are passed directly; no shell is
-inserted. SOLO_DATABASE_URL and PG* variables are removed from the child's
-environment.",
+inserted. SOLO_DATABASE_URL is removed from the child's environment.
+All other variables, including PG*, are inherited unchanged.",
         after_help = "CONSTRAINTS:
   Durations accept units such as 200ms, 30s, 5m, 1h; range: (0, 365 days].
   ttl must exceed heartbeat + db-timeout + grace. Renewals can keep a command
