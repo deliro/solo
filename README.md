@@ -7,7 +7,37 @@
 [English](README.md) | [Russian](README_ru.md)
 
 Solo runs a command under a shared PostgreSQL lease so that instances of the same job can run on different hosts or in different data centers.
-It records successful cron intervals in the database so that repeated invocations skip them.
+It records successful cron intervals in the database so that repeated invocations skip them. Invoke it more often than the task schedule to retry failures within each interval.
+
+## Quick start
+
+You need Linux or macOS, a shared writable PostgreSQL primary without split-brain, and an external scheduler using UTC.
+The database role needs schema DDL privileges and read/write access to Solo's tables.
+Download the binary from [GitHub Releases](https://github.com/deliro/solo/releases/latest) and put it on `PATH`; see [installation](#installation) for platforms and checksum verification.
+
+```sh
+export SOLO_DATABASE_URL='postgresql://solo:change-me@db.example.com/jobs?sslmode=require'
+solo run --key reconcile --schedule '*/5 * * * *' -- /bin/echo 'reconcile example'
+```
+
+Replace the database endpoint and credentials using your secret manager, and replace `/bin/echo` with your job's handler.
+
+Solo performs one attempt. An external scheduler controls invocations and retries.
+Arguments after `--` are passed directly; explicitly use `/bin/sh -c` for a trusted shell script.
+
+## Retry within an interval
+
+Invoke Solo every minute while keeping a five-minute task interval:
+
+| Setting | Value |
+|---|---|
+| Kubernetes CronJob `.spec.schedule` | `"* * * * *"` |
+| Kubernetes CronJob `.spec.timeZone` | `"Etc/UTC"` |
+| Solo `--schedule` | `'*/5 * * * *'` |
+
+For example: 12:00 fails, 12:01 retries, 12:02 succeeds; 12:03 and 12:04 skip. At 12:05 a new interval begins. Invocations also skip while an earlier attempt holds the key.
+
+The scheduler supplies the retries; Solo performs one attempt per invocation. Crossing the window boundary selects the new interval, without backfilling the failed one. Handlers must tolerate repeated execution after a failure. See [retry configuration](docs/usage.md#retry-within-an-interval).
 
 ## Installation
 
@@ -20,12 +50,15 @@ Download `solo-v<version>-<target>.tar.gz` and `SHA256SUMS` from [GitHub Release
 
 Verify the archive's SHA-256 against `SHA256SUMS` (`sha256sum` on Linux, `shasum -a 256` on macOS), extract it, and install `solo` in a directory on `PATH`. Linux binaries are static; TLS requires system root certificates. Windows is not supported: handler supervision uses Unix signals and process groups.
 
-For example, install v0.1.1 for Linux x86_64 below. Set `target` to the value from the table for your machine; macOS uses the same commands. Run in an empty directory:
+<details>
+<summary>Copy-and-paste installer</summary>
+
+For example, install v0.1.2 for Linux x86_64 below. Set `target` to the value from the table for your machine; macOS uses the same commands. Run in an empty directory:
 
 ```sh
 (
   set -eu
-  version=0.1.1
+  version=0.1.2
   target=x86_64-unknown-linux-musl
   archive="solo-v$version-$target"
   release="https://github.com/deliro/solo/releases/download/v$version"
@@ -43,7 +76,9 @@ For example, install v0.1.1 for Linux x86_64 below. Set `target` to the value fr
 )
 ```
 
-Add `$HOME/.local/bin` to your shell's `PATH` if needed: `export PATH="$HOME/.local/bin:$PATH"`. Persist this line in your shell's startup file. Solo still needs the PostgreSQL connection and scheduler described below.
+Add `$HOME/.local/bin` to your shell's `PATH` if needed: `export PATH="$HOME/.local/bin:$PATH"`. Persist this line in your shell's startup file. The PostgreSQL connection and scheduler are described above.
+
+</details>
 
 Build from source:
 
@@ -54,28 +89,11 @@ cargo build --release --locked
 
 You need stable Rust and a system C compiler. TLS uses rustls with ring; OpenSSL is not required. Development and release instructions are in [CONTRIBUTING.md](CONTRIBUTING.md). License: [MIT](LICENSE).
 
-## Quick start
+## Database connection
 
-You need Linux or macOS, a shared writable PostgreSQL primary without split-brain, and an external scheduler using UTC.
-The database role needs schema DDL privileges and read/write access to Solo's tables.
-These examples assume `solo` is on `PATH`.
-
-```sh
-export SOLO_DATABASE_URL='postgresql://solo:change-me@db.example.com/jobs?sslmode=require'
-solo run \
-  --key 'billing/prod/reconcile' \
-  --schedule '*/5 * * * *' \
-  --max-runtime 4m \
-  -- /bin/echo 'reconcile example'
-```
-
-Replace the database endpoint and credentials using your secret manager, and replace `/bin/echo` with your job's handler.
 Both URLs and `key=value` connection strings are supported; pass credentials only through `SOLO_DATABASE_URL`.
 PgBouncer transaction pooling with `max_prepared_statements=0` is supported: Solo requires neither cached prepared statements nor a connection pinned to one backend.
 `sslmode` is optional and defaults to `prefer`: try TLS, allowing plaintext if the server rejects TLS. TLS verifies the certificate and server hostname against system CAs; certificate or hostname errors fail the connection without plaintext fallback. Use `sslmode=require` to forbid plaintext or `sslmode=disable` to skip TLS. Install private CAs in the system store or select them with `SSL_CERT_FILE` / `SSL_CERT_DIR`.
-
-Solo performs one attempt. An external scheduler controls invocations and retries.
-Arguments after `--` are passed directly; explicitly use `/bin/sh -c` for a trusted shell script.
 
 ## Task keys and schedules
 

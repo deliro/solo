@@ -30,6 +30,7 @@ Before changing public behavior, timing, or the schema, read [docs/usage.md](doc
 - Avoid intermediate collections when one pass is sufficient. Keep a clear `match` when a combinator chain would obscure it.
 - Preserve the strict Rust/Clippy checks in `Cargo.toml`; fix the cause of a warning. Comments explain non-obvious reasons and constraints.
 - English is the primary project language. Write code, CLI help, documentation, agent instructions, and commit messages in English. `README_ru.md` is the sole documentation language exception. Match the user's language in conversation. When CLI behavior changes, update `--help`, `README.md`, `README_ru.md`, and `docs/usage.md`.
+- Lead READMEs with a short usage example and practical behavior. Keep detailed installation scripts in a collapsed section after the quick start.
 - Use Conventional Commits: `feat: ...`, `fix: ...`, `refactor: ...`, `docs: ...`, `test: ...`, or `chore: ...`. Add a scope when it accurately describes the change.
 
 ## Verification

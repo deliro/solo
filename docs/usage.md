@@ -36,6 +36,49 @@ Do not infer confirmed success from the handler's exit alone: Solo must atomical
 
 Run diagnostics use a bounded best-effort queue. A full or unavailable stderr may lose messages, but cannot block lease management or child shutdown. Final diagnostic flushing is limited to 100ms.
 
+## Retry within an interval
+
+The scheduler's frequency and Solo's interval can differ. To retry failures within a five-minute interval, invoke Solo every minute with `--schedule '*/5 * * * *'`.
+
+In an existing Kubernetes CronJob, configure these fields while retaining the image, `SOLO_DATABASE_URL` secret, and other pod settings:
+
+```yaml
+spec:
+  schedule: "* * * * *"
+  timeZone: "Etc/UTC"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: job
+              command:
+                - solo
+                - run
+                - --key
+                - reconcile
+                - --schedule
+                - "*/5 * * * *"
+                - --
+                - /opt/jobs/reconcile
+```
+
+Keep the cron expression as one command argument. Shell wrappers must forward arguments with `"$@"` so spaces and `*` survive unchanged. With a shell-based scheduler, quote the expression as in the command above.
+
+Assuming each attempt finishes before the next invocation, the sequence can be:
+
+| PostgreSQL time (UTC) | Result |
+|---|---|
+| 12:00 | Handler fails; interval 12:00 remains eligible |
+| 12:01 | New invocation retries interval 12:00 |
+| 12:02 | Another attempt succeeds and commits success for interval 12:00 |
+| 12:03–12:04 | Invocations skip the successful interval |
+| 12:05 | A new interval becomes eligible |
+
+While any attempt holds the key, other invocations skip, including those in a newer interval. Each invocation chooses its interval from PostgreSQL time at acquisition and keeps it until completion. After the boundary, a new attempt selects the new interval; it does not retry the old one. If no attempt succeeded, the old interval remains unsuccessful without being backfilled.
+
+These are separate scheduler-driven attempts, not Solo waiting or retrying the handler internally. Kubernetes Job retries can also create attempts; configure Job `backoffLimit` separately. `--max-runtime` limits one handler attempt, not all attempts in the interval. An external action can succeed before the handler or success recording fails, so handlers must tolerate repeated execution.
+
 ## Status
 
 ```sh
